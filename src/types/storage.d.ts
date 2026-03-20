@@ -54,7 +54,7 @@ export interface LxdStorageVolume {
   used_by?: string[];
   etag?: string;
   source?: {
-    location: string;
+    location?: string;
     mode?: "pull" | "push" | "relay";
     name: string;
     pool: string;
