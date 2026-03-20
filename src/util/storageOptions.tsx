@@ -12,6 +12,7 @@ export const powerFlex = "powerflex";
 export const pureStorage = "pure";
 export const alletraDriver = "alletra";
 export const lvmClusterDriver = "lvmcluster";
+export const linstorDriver = "linstor";
 
 export const storageDriverLabels: { [key: string]: string } = {
   [dirDriver]: "Directory",
@@ -25,6 +26,7 @@ export const storageDriverLabels: { [key: string]: string } = {
   [cephObject]: "Ceph Object",
   [alletraDriver]: "HPE Alletra",
   [lvmClusterDriver]: "LVM Cluster",
+  [linstorDriver]: "Linstor",
 };
 
 const bucketCompatibleDrivers = [dirDriver, btrfsDriver, lvmDriver, zfsDriver];
@@ -87,6 +89,7 @@ export const driversWithFilesystemSupport = [
   cephDriver,
   pureStorage,
   cephObject,
+  linstorDriver,
 ];
 
 export const isRemoteStorage = (driver: string) => {
