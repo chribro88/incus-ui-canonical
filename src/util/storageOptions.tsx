@@ -26,7 +26,7 @@ export const storageDriverLabels: { [key: string]: string } = {
   [cephObject]: "Ceph Object",
   [alletraDriver]: "HPE Alletra",
   [lvmClusterDriver]: "LVM Cluster",
-  [linstorDriver]: "Linstor",
+  [linstorDriver]: "LINSTOR",
 };
 
 const bucketCompatibleDrivers = [dirDriver, btrfsDriver, lvmDriver, zfsDriver];
