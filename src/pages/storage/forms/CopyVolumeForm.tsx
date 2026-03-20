@@ -1,5 +1,5 @@
-import type { FC } from "react";
-import { useState } from "react";
+import type { ChangeEvent, FC } from "react";
+import { useEffect, useState } from "react";
 import { useFormik } from "formik";
 import {
   ActionButton,
@@ -36,13 +36,49 @@ export interface StorageVolumeCopyFormValues {
   location: string;
 }
 
+export const getStorageVolumeCopyTarget = (
+  driver: string,
+  location: string,
+): string => {
+  return isRemoteStorage(driver) ? "" : location;
+};
+
+export const buildStorageVolumeCopyPayload = (
+  volume: LxdStorageVolume,
+  values: StorageVolumeCopyFormValues,
+  driver: string,
+): Partial<LxdStorageVolume> => {
+  const source = {
+    name: volume.name,
+    type: "copy",
+    pool: volume.pool,
+    volume_only: !values.copySnapshots,
+    // logic from the lxc source code.
+    // We should not set source.project if target project is the same as the source project
+    project: 
+      values.project !== volume.project ? volume.project : undefined,
+    ...(isRemoteStorage(driver) ? {} : { location: volume.location }),
+  };
+
+  return {
+    name: values.name,
+    type: "custom",
+    config: volume.config,
+    description: volume.description,
+    content_type: volume.content_type,
+    source,
+  };
+};
+
 const CopyVolumeForm: FC<Props> = ({ volume, close }) => {
   const toastNotify = useToastNotification();
   const controllerState = useState<AbortController | null>(null);
+  const [lastMemberLocalLocation, setLastMemberLocalLocation] = useState(
+    volume.location,
+  );
   const eventQueue = useEventQueue();
 
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
-  const { data: pool } = useStoragePool(volume.pool);
   const { data: volumes = [], isLoading: volumesLoading } =
     useLoadCustomVolumes(volume.project);
 
@@ -110,31 +146,31 @@ const CopyVolumeForm: FC<Props> = ({ volume, close }) => {
       project: volume.project,
       copySnapshots: true,
       pool: volume.pool,
-      location: isRemoteStorage(pool?.driver ?? "") ? "" : volume.location,
+      location: volume.location,
     },
     enableReinitialize: true,
     validationSchema,
-    onSubmit: (values) => {
-      const payload: Partial<LxdStorageVolume> = {
-        name: values.name,
-        type: "custom",
-        config: volume.config,
-        description: volume.description,
-        content_type: volume.content_type,
-        source: {
-          name: volume.name,
-          type: "copy",
-          pool: volume.pool,
-          volume_only: !values.copySnapshots,
-          // logic from the lxc source code.
-          // We should not set source.project if target project is the same as the source project
-          project:
-            values.project !== volume.project ? volume.project : undefined,
-          location: volume.location,
-        },
-      };
+    onSubmit: (values, { setSubmitting }) => {
+      if (!isDestinationPoolReady || !destinationPoolDriver) {
+        toastNotify.failure(
+          "Volume copy failed.",
+          new Error("Destination storage pool details are still loading."),
+        );
+        setSubmitting(false);
+        return;
+      }
 
-      copyStorageVolume(payload, values.pool, values.project, values.location)
+      const payload = buildStorageVolumeCopyPayload(
+        volume,
+        values,
+        destinationPoolDriver,
+      );
+      const target = getStorageVolumeCopyTarget(
+        destinationPoolDriver,
+        values.location,
+      );
+      
+      copyStorageVolume(payload, values.pool, values.project, target)
         .then((operation) => {
           toastNotify.info(
             <>
@@ -160,6 +196,53 @@ const CopyVolumeForm: FC<Props> = ({ volume, close }) => {
     },
   });
 
+  const {
+    data: destinationPool,
+    isLoading: destinationPoolLoading,
+    isFetching: destinationPoolFetching,
+  } = useStoragePool(formik.values.pool);
+  const { location } = formik.values;
+  const { setFieldValue } = formik;
+  const destinationPoolDriver = destinationPool?.driver;
+  const isDestinationPoolReady =
+    !!destinationPoolDriver && !destinationPoolLoading && !destinationPoolFetching;
+  const showClusterMemberSelector =
+    isDestinationPoolReady && !isRemoteStorage(destinationPoolDriver);
+
+  useEffect(() => {
+    setLastMemberLocalLocation(volume.location);
+  }, [volume.location]);
+
+  useEffect(() => {
+    if (!destinationPoolDriver) {
+      return;
+    }
+
+    if (isRemoteStorage(destinationPoolDriver) && location) {
+      void setFieldValue("location", "");
+    }
+
+    if (
+      !isRemoteStorage(destinationPoolDriver) &&
+      !location &&
+      lastMemberLocalLocation
+    ) {
+      void setFieldValue("location", lastMemberLocalLocation);
+    }
+  }, [
+    destinationPoolDriver,
+    lastMemberLocalLocation,
+    location,
+    setFieldValue,
+  ]);
+
+  const locationFieldProps = formik.getFieldProps("location");
+
+  const handleLocationChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setLastMemberLocalLocation(event.currentTarget.value);
+    locationFieldProps.onChange(event);
+  };
+  
   return (
     <Modal
       close={close}
@@ -182,6 +265,7 @@ const CopyVolumeForm: FC<Props> = ({ volume, close }) => {
             disabled={
               !formik.isValid ||
               formik.isSubmitting ||
+              !isDestinationPoolReady ||
               projectsLoading ||
               volumesLoading
             }
@@ -207,8 +291,11 @@ const CopyVolumeForm: FC<Props> = ({ volume, close }) => {
             label: "Storage pool",
           }}
         />
-        {!isRemoteStorage(pool?.driver ?? "") && (
-          <ClusterMemberSelector {...formik.getFieldProps("location")} />
+        {showClusterMemberSelector && (
+          <ClusterMemberSelector
+            {...locationFieldProps}
+            onChange={handleLocationChange}
+          />
         )}
         <Select
           {...formik.getFieldProps("project")}
