@@ -13,6 +13,7 @@ import {
   cephFSDriver,
   cephObject,
   dirDriver,
+  linstorDriver,
   lvmDriver,
   lvmClusterDriver,
   powerFlex,
@@ -125,6 +126,7 @@ const storagePoolDriverToOptionKey: Record<string, LxdConfigOptionsKeys> = {
   [cephObject]: "storage-cephobject",
   [alletraDriver]: "storage-alletra",
   [lvmClusterDriver]: "storage-lvmcluster",
+  [linstorDriver]: "storage-linstor",
 };
 
 export const storagePoolFormDriverToOptionKey = (
